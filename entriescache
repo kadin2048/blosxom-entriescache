@@ -17,8 +17,8 @@ $delay = 0;		# How many minutes delay before entries are re-indexed?
 			# improve performance....
 			# SAS - I set this to zero so comments and new files
 			# are immediately visible.
-$indexname = "$blosxom::plugin_state_dir/.entries_cache.index";
-$others_indexname = "$blosxom::plugin_state_dir/.entries_cache.others";
+$indexname = "$blosxom::plugin_state_dir/entries_cache.index";
+$others_indexname = "$blosxom::plugin_state_dir/entries_cache.others";
 
 
 $use_date_tags = 1;	# Set to 1 to enable parsing meta- keywords
