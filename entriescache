@@ -1,44 +1,64 @@
-# Blosxom Plugin: entries_cache
+# Blosxom Plugin: entries_cache -*- perl -*-
 # Author(s): Fletcher T. Penney <http://fletcher.freeshell.org/> 
-# Version: 0.9
+# Modified by Steve Schwarz <http://agilitynerd.com/>
+# Version: 0.92
 # Based on entries_index by Rael Dornfest
+# Documentation help contributed by Iain Cheyne
 
 package entriescache;
 
 # --- Configurable variables -----
 
-$delay = 60;		# How many minutes delay before entries are re-indexed?
-					# Set to 0 to force reindexing everytime - this
-					# will provide the same behavior as Rael's
-					# entries_index.  Though, I am not sure why one 
-					# would do this.  At least use a small cache time to
-					# improve performance....
+$delay = 0;		# How many minutes delay before entries are re-indexed?
+			# Set to 0 to force reindexing everytime - this
+			# will provide the same behavior as Rael's
+			# entries_index.  Though, I am not sure why one 
+			# would do this.  At least use a small cache time to
+			# improve performance....
+			# SAS - I set this to zero so comments and new files
+			# are immediately visible.
+$indexname = "$blosxom::plugin_state_dir/.entries_cache.index";
+$others_indexname = "$blosxom::plugin_state_dir/.entries_cache.others";
 
 
-$indexname = "$blosxom::plugin_state_dir/entries_cache.index";
-$others_indexname = "$blosxom::plugin_state_dir/entries_cache.others";
+$use_date_tags = 1;	# Set to 1 to enable parsing meta- keywords
+			# for date tags
 
-
-$use_date_tags = 1;			# Set to 1 to enable parsing meta- keywords
-							# for date tags
-
-$use_UK_dates = 0;			# Default is mm/dd/yy (US)
-							# Set to 1 to use dd/mm/yy (UK)
+$use_UK_dates = 0;	# Default is mm/dd/yy (US)
+			# Set to 1 to use dd/mm/yy (UK)
 
 $update_meta_date = 0;		# Add a meta_date tag if it doesn't exist
-	# This will require that perl has write access to your story files...
-	# Also, be sure to use UNIX line endings!!!
+	# This will require that perl has write access to your story files
+	# and that you are using the meta plugin.
 	
-# The default meta-keywords are compatible with Eric Sherman's
-# entries_index_tagged defaults
+	# NOTE: As of version 0.91, you do not NEED the meta plugin...
 
-# timestamp_tag is the non-human readable date stamp format
-# used by entries_index, entries_cache, entries_index_tagged, and blosxom
+	# Be sure to save your text files with UNIX line endings
+	# (any decent text editor should be able to do this) or use the blok
+	# plugin (http://www.enilnomi.net/download.html#blok).
+	# There is some logic in entries_cache to fix this, but do not rely
+	# on it.
+
+	# Lastly, make sure there is at least one blank line between the
+	# entry title and the body. Again, there is some logic in
+	# entries_cache to fix this, but do not rely on it.
+	
+	# The default meta-keywords are compatible with Eric Sherman's
+	# entries_index_tagged defaults:
+	
+	# http://primitiveworker.org/blo.g/development/blosxom/entries_index_tagged/
+
 $meta_timestamp = "meta-creation_timestamp:" unless defined $meta_timestamp;
+	# timestamp_tag is the non-human readable date stamp format
+	# used by entries_index, entries_cache, entries_index_tagged,
+	# and blosxom
 
-# date_tag is a human readable version
 $meta_date = "meta-creation_date:" unless defined $meta_date;
+	# date_tag is a human readable version
 
+$strip_meta_dates = 1;		# Strip meta-tags from story so that 
+	# they are not displayed.  Unnecessary if you are running the 
+	# meta plugin.
 
 $debug = 0;	# Debugging flag
 
@@ -134,13 +154,17 @@ sub entries {
 					$File::Find::name =~ 
 						m!^$blosxom::datadir/(?:(.*)/)?(.+)\.$blosxom::file_extension$!
 						and $2 ne 'index' and $2 !~ /^\./ and (-r $File::Find::name)
-					) {							
-						# to show or not to show future entries
-						(
-							$blosxom::show_future_entries
-							or stat($File::Find::name)->mtime <= time
-						) 
-						and ( $files{$File::Find::name} || ++$reindex )
+					) {
+				    # SAS modified so if meta-creation_date or file timestamp are in the future
+				    # and we don't want future entries the file won't be included in the file list
+				    # the index list
+				    if (!$blosxom::show_future_entries and 
+					((extract_date($File::Find::name, $files{$File::Find::name}) > time) or
+					 (stat($File::Find::name)->mtime > time))) {
+					$files{$File::Find::name} and delete $files{$File::Find::name};
+					$others{$File::Find::name} and delete $others{$File::Find::name};
+				    } else {
+					        ( $files{$File::Find::name} || ++$reindex )
 						and ( $files{$File::Find::name} = 
 							extract_date($File::Find::name,$files{$File::Find::name}) ||
 							$files{$File::Find::name} ||
@@ -158,6 +182,7 @@ sub entries {
 						and $d = join('/', (blosxom::nice_date($files{$File::Find::name}))[5,2,3])
 						and $indexes{$d} = $d
 						and $blosxom::static_entries and $indexes{ ($1 ? "$1/" : '') . "$2.$blosxom::file_extension" } = 1;
+					    }
 					} else {
 						!-d $File::Find::name and -r $File::Find::name and $others{$File::Find::name} = stat($File::Find::name)->mtime
 					}
@@ -354,6 +379,19 @@ sub parsedate {
 	
 }
 
+sub story {
+	return 1 if (! $strip_meta_dates);
+	# This code based on Rael's meta plugin
+	my($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+	
+	# Strip date-based meta tags from body
+	$$body_ref =~ s/^$meta_timestamp.*//g;
+	$$body_ref =~ s/^$meta_date.*//g;
+	
+	
+	return 1;
+}
+
 1;
 
 __END__
@@ -364,20 +402,52 @@ Blosxom Plug-in: entries_cache
 
 =head1 SYNOPSIS
 
-The entries_cache plugin is a "souped-up" version of the entries_index plugin.  It maintains file modification times in the same manner as the original plugin, but goes one step further.  It uses the modification time of the index file to determine whether to rescan the datadir.  If $delay minutes have not passed, it relies on the cached information.
+Purpose: This plugin reserves original creation timestamp on weblog 
+entries, allowing for editing of entries without altering the original 
+creation time. It maintains an index ($blosxom::plugin_state_dir/
+.entries_cache.index) of filenames and their creation times. It also adds 
+new entries to the index the first time Blosxom come across them. In 
+addition, it is possible to rely on entries_cache inserting date-based meta 
+tags automatically into entries - this is enabled by the $use_date_tags 
+setting. This makes the entries more portable. Note that if this approach 
+is used, the meta plugin is required: http://www.blosxom.com/downloads/
+plugins/meta.  (NOTE: As of version 0.91 you can use this without the meta
+plugin.)
 
-The original blosxom and, if I read the code properly, the entries_index plugin rescan the datadir each time a page is viewed.  This plugin allows you to cache the information to speed up processing times on most page views.  According to several posts on the blosxom mailing list, this is one of the big processor hogs.  With a $delay setting of 60 minutes, there will only be one page view each hour that has to wait for the full directory scan.
+Replaces the default $blosxom::entries subroutine
 
-Honestly, I have not noticed much of a speed boost during my testing yet, but I imagine it would only appear for sites with a large number of files to be indexed.
+The entries_cache plugin is a "souped-up" version of the entries_index 
+plugin.  It maintains file modification times in the same manner as the 
+original plugin, but goes one-step further. It uses the modification time 
+of the index file to determine whether to rescan the datadir.  If $delay 
+minutes have not passed, it relies on the cached information.
 
-You can force a manual scan by appending ?reindex=y to the end of the url.
+You can force a manual scan by appending ?reindex=y to the end of your base 
+url.
+
+The reason for this change is that the original blosxom and the 
+entries_index plugin rescan the datadir each time a page is viewed. This 
+plugin allows you to cache the information to speed up processing times on 
+most page views.  According to several posts on the blosxom mailing list, 
+this is one of the big processor hogs. With a $delay setting of 60 minutes, 
+there will only be one page view each hour that has to wait for the full 
+directory scan. To be honest, I have not noticed much of a speed boost 
+during my testing yet, but I imagine it would only appear for sites with a 
+large number of files to be indexed.
 
 
 =head1 VERSION
 
-0.9
+0.92
 
 =head1 VERSION HISTORY
+0.92    Checks if meta-creation_date is in the future and only displays
+        entry if $show_future_entries is set. Otherwise future articles
+        (by meta-creation_date or file modified time) are not displayed.
+        Don't think this breaks static rendering... haven't tested it.
+        
+0.91	Improved documentation courtesy of Iain Cheyne - THANKS!!!
+		Now, if you are not running the meta plugin, you will not see any meta tags in your stories
 
 0.9		Added parser that detects stories that are not properly formatted for meta-tags and reformats them so that they are.
 		Additionally, it will not update files that have improper line endings ( ie non-UNIX endings).
@@ -402,7 +472,7 @@ You can force a manual scan by appending ?reindex=y to the end of the url.
 =head1 AUTHOR
 
 Fletcher T. Penney
-
+Modified by Steve Schwarz
 based on original code by:
 Rael Dornfest  <rael@oreilly.com>, http://www.raelity.org/
 
